@@ -250,7 +250,8 @@ The library can contain both established ML algorithms and custom algorithms dev
 
 ## Summary
 
-> \*\*FastML is the Machine Learning toolbox of FastJava.\*\*
+\*\*FastML is the Machine Learning toolbox of FastJava.\*\*
+
 It stores, learns and recognizes patterns and provides reusable algorithms for classical Machine Learning.
 
 \*\*FastModel\*\* handles LLM-oriented models.

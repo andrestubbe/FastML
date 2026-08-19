@@ -47,7 +47,6 @@ public class Demo {
 - [Why FastML?](#why-fastml)
 - [Key Features](#key-features)
 - [Performance](#performance)
-- [Architecture & FastJava Ecosystem](#architecture--fastjava-ecosystem)
 - [API Quick Reference](#api-quick-reference)
 - [Installation](#installation)
 - [Technical Examples & Hero Demos](#technical-examples--hero-demos)
@@ -87,25 +86,6 @@ Modern AI runtimes frequently force heavy Python dependencies, multi-gigabyte mo
 | Feature Extraction (8D) | 60×60 Image Window | **< 40 µs** |
 | Centroid Distance Match | 8-Dimensional Vector | **< 15 ns** |
 | Sliding Window Scan | 800×600 Image (15px Stride) | **~18 ms** |
-
----
-
-## Architecture & FastJava Ecosystem
-
-```text
-                    FastAI (High-Level AI API)
-                         │
-                   ┌─────┴─────────────┐
-                   ▼                   ▼
-             FastModel               FastML (This Library)
-          (LLMs & Embeddings)      (Classical ML & Patterns)
-                                       │
-                         ┌─────────────┼─────────────┐
-                         ▼             ▼             ▼
-                      Patterns      Algorithms     Vision
-                     (Vectors,       (Centroid,    (Sliding
-                      Rasters)       KNN, etc.)     Window)
-```
 
 ---
 

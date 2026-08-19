@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>FastML</name>
-    <description>Classical Machine Learning & Pattern Recognition Library for Java</description>
+    <description>Classical Machine Learning &amp; Pattern Recognition Library for Java</description>
     <url>https://github.com/andrestubbe/FastML</url>
 
     <properties>

@@ -7,8 +7,8 @@ import java.util.Arrays;
  */
 public record VectorPattern(double[] values) implements Pattern {
 
-    public VectorPattern(double... values) {
-        this.values = values != null ? values.clone() : new double[0];
+    public VectorPattern {
+        values = values != null ? values.clone() : new double[0];
     }
 
     @Override

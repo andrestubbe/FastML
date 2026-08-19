@@ -2,171 +2,312 @@ package fastml.demo;
 
 import fastml.FastML;
 import fastml.algorithm.CentroidClassifier;
-import fastml.vision.SlidingWindowScanner;
+import fastml.pattern.RasterPattern;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.File;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
-import javax.imageio.ImageIO;
 
 /**
- * FastML Handwriting Recognition & Sliding Window Detection Demo.
+ * FastML Handwriting Canvas & Memory Visualizer Demo (inspired by Demo_04).
+ *
+ * <p>Features:
+ * <ul>
+ *   <li>Left panel: Interactive freehand drawing canvas with resolution-independent strokes</li>
+ *   <li>Normalized 28x28 rasterization</li>
+ *   <li>Right panel: Real-time visual Heatmap memory / Centroid of learned letters</li>
+ *   <li>Immediate prediction and distance measurement</li>
+ * </ul>
  */
 public class HandwritingDemo extends JFrame {
 
-    private final CentroidClassifier<String> model = FastML.centroid();
-    private final SlidingWindowScanner<String> scanner = FastML.scanner(model);
+    private static final int TARGET_GRID = 28;
 
-    private final ImagePanel sourcePanel = new ImagePanel("Trainings-Vorschau");
-    private final ImagePanel targetPanel = new ImagePanel("Zielbild (Erkennung)");
-    private final JTextArea logArea = new JTextArea(8, 40);
+    private final CentroidClassifier<String> model = FastML.centroid();
+    private final DrawCanvas canvas = new DrawCanvas();
+    private final CentroidMemoryPanel memoryPanel = new CentroidMemoryPanel();
+    private final JLabel statusLabel = new JLabel("Status: Zeichne einen Buchstaben links...", JLabel.CENTER);
 
     public HandwritingDemo() {
-        super("FastML — Handwriting & Pattern Recognition Demo");
+        super("FastML — Handwriting & Centroid Memory Visualizer");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1100, 750);
+        setSize(950, 620);
         setLocationRelativeTo(null);
 
         setLayout(new BorderLayout(10, 10));
 
-        JPanel imagesPanel = new JPanel(new GridLayout(1, 2, 10, 10));
-        imagesPanel.add(sourcePanel);
-        imagesPanel.add(targetPanel);
-        add(imagesPanel, BorderLayout.CENTER);
+        // Top Toolbar
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 8));
+        JButton btnTrainA = new JButton("Als 'A' trainieren");
+        JButton btnTrainB = new JButton("Als 'B' trainieren");
+        JButton btnTrainC = new JButton("Als 'C' trainieren");
+        JButton btnTrainCustom = new JButton("Eigenes Label trainieren...");
+        JButton btnPredict = new JButton("Erkennen (Predict)");
+        JButton btnClear = new JButton("Canvas Löschen");
 
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
-        JButton btnLoadTrain = new JButton("1. Trainingsbild laden");
-        JButton btnTrain = new JButton("2. Label trainieren");
-        JButton btnLoadTarget = new JButton("3. Zielbild laden");
-        JButton btnScan = new JButton("4. Muster scannen");
+        toolbar.add(btnTrainA);
+        toolbar.add(btnTrainB);
+        toolbar.add(btnTrainC);
+        toolbar.add(btnTrainCustom);
+        toolbar.add(Box.createHorizontalStrut(15));
+        toolbar.add(btnPredict);
+        toolbar.add(btnClear);
 
-        controls.add(btnLoadTrain);
-        controls.add(btnTrain);
-        controls.add(btnLoadTarget);
-        controls.add(btnScan);
-        add(controls, BorderLayout.NORTH);
+        add(toolbar, BorderLayout.NORTH);
 
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        add(new JScrollPane(logArea), BorderLayout.SOUTH);
+        // Center Split / Dual Display
+        JPanel mainDisplay = new JPanel(new GridLayout(1, 2, 15, 10));
+        mainDisplay.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
 
-        btnLoadTrain.addActionListener(e -> chooseImage(sourcePanel, "Trainingsbild geladen"));
-        btnTrain.addActionListener(e -> trainCurrentSource());
-        btnLoadTarget.addActionListener(e -> chooseImage(targetPanel, "Zielbild geladen"));
-        btnScan.addActionListener(e -> scanTarget());
+        JPanel leftBox = new JPanel(new BorderLayout(5, 5));
+        leftBox.setBorder(BorderFactory.createTitledBorder("Eingabe-Canvas (Zeichnen)"));
+        leftBox.add(new SquareWrapper(canvas), BorderLayout.CENTER);
 
-        log("FastML Initialisiert. Bereit für Training und Inferenz.");
-    }
+        JPanel rightBox = new JPanel(new BorderLayout(5, 5));
+        rightBox.setBorder(BorderFactory.createTitledBorder("Visuelles Gedächtnis (28x28 Zentroid)"));
+        rightBox.add(new SquareWrapper(memoryPanel), BorderLayout.CENTER);
 
-    private void chooseImage(ImagePanel panel, String msg) {
-        JFileChooser chooser = new JFileChooser(".");
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            try {
-                File file = chooser.getSelectedFile();
-                BufferedImage img = ImageIO.read(file);
-                panel.setImage(img);
-                log(msg + ": " + file.getName() + " (" + img.getWidth() + "x" + img.getHeight() + ")");
-            } catch (Exception ex) {
-                log("Fehler beim Laden: " + ex.getMessage());
+        mainDisplay.add(leftBox);
+        mainDisplay.add(rightBox);
+        add(mainDisplay, BorderLayout.CENTER);
+
+        // Bottom Status Bar
+        statusLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(6, 10, 8, 10));
+        add(statusLabel, BorderLayout.SOUTH);
+
+        // Button Actions
+        btnTrainA.addActionListener(e -> trainCurrentLabel("A"));
+        btnTrainB.addActionListener(e -> trainCurrentLabel("B"));
+        btnTrainC.addActionListener(e -> trainCurrentLabel("C"));
+        btnTrainCustom.addActionListener(e -> {
+            String label = JOptionPane.showInputDialog(this, "Buchstabe / Label:", "A");
+            if (label != null && !label.trim().isEmpty()) {
+                trainCurrentLabel(label.trim().toUpperCase());
             }
-        }
+        });
+
+        btnPredict.addActionListener(e -> predictCurrent());
+        btnClear.addActionListener(e -> {
+            canvas.clear();
+            statusLabel.setText("Canvas geleert.");
+        });
     }
 
-    private void trainCurrentSource() {
-        if (sourcePanel.image == null) {
-            log("Bitte zuerst ein Trainingsbild laden.");
+    private void trainCurrentLabel(String label) {
+        RasterPattern pattern = canvas.toRasterPattern(TARGET_GRID);
+        if (pattern == null) {
+            statusLabel.setText("Fehler: Canvas ist leer. Bitte zuerst zeichnen.");
             return;
         }
-        String label = JOptionPane.showInputDialog(this, "Label für dieses Muster eingeben:", "A");
-        if (label == null || label.trim().isEmpty()) return;
 
-        label = label.trim();
-        var feat = FastML.extractFeatures(sourcePanel.image, 0, 0, sourcePanel.image.getWidth(), sourcePanel.image.getHeight());
-        model.train(label, feat);
+        model.train(label, pattern);
         model.fit();
 
-        log("Label '" + label + "' trainiert mit Feature-Vektor: " + feat);
+        var centroid = model.getCentroid(label);
+        if (centroid != null) {
+            memoryPanel.setCentroid(label, centroid.toArray(), TARGET_GRID);
+        }
+
+        canvas.clear();
+        statusLabel.setText("Erfolgreich trainiert: Label '" + label + "'. Memory aktualisiert.");
     }
 
-    private void scanTarget() {
-        if (targetPanel.image == null) {
-            log("Bitte zuerst ein Zielbild laden.");
+    private void predictCurrent() {
+        RasterPattern pattern = canvas.toRasterPattern(TARGET_GRID);
+        if (pattern == null) {
+            statusLabel.setText("Fehler: Kein Zeichen zum Erkennen vorhanden.");
             return;
         }
-        if (model.getLabels().isEmpty()) {
-            log("Modell enthält noch keine trainierten Klassen.");
+
+        String pred = model.predict(pattern);
+        if (pred == null) {
+            statusLabel.setText("Keine Vorhersage möglich: Modell ist noch untrainiert.");
             return;
         }
 
-        int winW = 60;
-        int winH = 60;
-        int step = 15;
-        double maxDist = 2.5;
+        double dist = model.distance(pattern, pred);
+        var centroid = model.getCentroid(pred);
+        if (centroid != null) {
+            memoryPanel.setCentroid(pred, centroid.toArray(), TARGET_GRID);
+        }
 
-        log("Scanne Zielbild (Fenster: " + winW + "x" + winH + ", Stride: " + step + ", MaxDist: " + maxDist + ")...");
-        var matches = scanner.scan(targetPanel.image, winW, winH, step, step, null, maxDist);
+        statusLabel.setText(String.format("Erkannt: '%s' (Distanz: %.3f)", pred, dist));
+    }
 
-        targetPanel.setMatches(matches);
-        log("Scan abgeschlossen: " + matches.size() + " Treffer gefunden.");
-        for (var m : matches) {
-            log("  -> Label: " + m.label() + " @ (" + m.x() + ", " + m.y() + ") Dist: " + String.format("%.3f", m.distance()));
+    // -------------------------------------------------------------------------
+    //  Square Wrapper for equal aspect ratio
+    // -------------------------------------------------------------------------
+    static class SquareWrapper extends JPanel {
+        private final JComponent inner;
+
+        SquareWrapper(JComponent inner) {
+            this.inner = inner;
+            setLayout(null);
+            add(inner);
+        }
+
+        @Override
+        public void doLayout() {
+            int size = Math.min(getWidth(), getHeight()) - 10;
+            int x = (getWidth() - size) / 2;
+            int y = (getHeight() - size) / 2;
+            inner.setBounds(x, y, size, size);
         }
     }
 
-    private void log(String msg) {
-        logArea.append(msg + "\n");
-        logArea.setCaretPosition(logArea.getDocument().getLength());
-    }
+    // -------------------------------------------------------------------------
+    //  Draw Canvas
+    // -------------------------------------------------------------------------
+    static class DrawCanvas extends JPanel {
+        private final List<List<Point>> strokes = new ArrayList<>();
+        private List<Point> currentStroke;
 
-    static class ImagePanel extends JPanel {
-        private BufferedImage image;
-        private final String title;
-        private List<SlidingWindowScanner.Match<String>> matches = new ArrayList<>();
+        DrawCanvas() {
+            setBackground(Color.WHITE);
+            MouseAdapter mouse = new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    currentStroke = new ArrayList<>();
+                    currentStroke.add(e.getPoint());
+                    strokes.add(currentStroke);
+                    repaint();
+                }
 
-        ImagePanel(String title) {
-            this.title = title;
-            setBorder(BorderFactory.createTitledBorder(title));
+                @Override
+                public void mouseDragged(MouseEvent e) {
+                    if (currentStroke != null) {
+                        currentStroke.add(e.getPoint());
+                        repaint();
+                    }
+                }
+            };
+            addMouseListener(mouse);
+            addMouseMotionListener(mouse);
         }
 
-        void setImage(BufferedImage img) {
-            this.image = img;
-            this.matches.clear();
-            repaint();
-        }
-
-        void setMatches(List<SlidingWindowScanner.Match<String>> matches) {
-            this.matches = matches;
+        void clear() {
+            strokes.clear();
             repaint();
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
-            if (image == null) {
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(Color.BLACK);
+            g2.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+            for (List<Point> stroke : strokes) {
+                for (int i = 1; i < stroke.size(); i++) {
+                    Point p1 = stroke.get(i - 1);
+                    Point p2 = stroke.get(i);
+                    g2.drawLine(p1.x, p1.y, p2.x, p2.y);
+                }
+            }
+
+            g2.setColor(new Color(220, 220, 220));
+            g2.setStroke(new BasicStroke(1f));
+            g2.drawRect(0, 0, getWidth() - 1, getHeight() - 1);
+        }
+
+        public RasterPattern toRasterPattern(int grid) {
+            if (strokes.isEmpty()) return null;
+
+            int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+
+            for (List<Point> stroke : strokes) {
+                for (Point p : stroke) {
+                    minX = Math.min(minX, p.x);
+                    minY = Math.min(minY, p.y);
+                    maxX = Math.max(maxX, p.x);
+                    maxY = Math.max(maxY, p.y);
+                }
+            }
+
+            double width = Math.max(1.0, maxX - minX);
+            double height = Math.max(1.0, maxY - minY);
+
+            RasterPattern pattern = FastML.raster(grid, grid);
+
+            for (List<Point> stroke : strokes) {
+                for (Point p : stroke) {
+                    double nx = (p.x - minX) / width;
+                    double ny = (p.y - minY) / height;
+
+                    int gx = Math.min(grid - 1, Math.max(0, (int) (nx * (grid - 1))));
+                    int gy = Math.min(grid - 1, Math.max(0, (int) (ny * (grid - 1))));
+
+                    pattern.set(gx, gy, true);
+                }
+            }
+            return pattern;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    //  Centroid Memory Visualizer Panel (Heatmap)
+    // -------------------------------------------------------------------------
+    static class CentroidMemoryPanel extends JPanel {
+        private double[] centroid;
+        private int gridSize = TARGET_GRID;
+        private String currentLabel = "";
+
+        CentroidMemoryPanel() {
+            setBackground(new Color(245, 245, 245));
+        }
+
+        void setCentroid(String label, double[] centroid, int gridSize) {
+            this.currentLabel = label;
+            this.centroid = centroid;
+            this.gridSize = gridSize;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            int w = getWidth();
+            int h = getHeight();
+
+            if (centroid == null) {
                 g.setColor(Color.GRAY);
-                g.drawString("Kein Bild geladen", getWidth() / 2 - 50, getHeight() / 2);
+                g.drawString("Noch kein Modell geladen/trainiert", w / 2 - 100, h / 2);
                 return;
             }
 
-            double sx = (double) getWidth() / image.getWidth();
-            double sy = (double) getHeight() / image.getHeight();
+            double cellW = (double) w / gridSize;
+            double cellH = (double) h / gridSize;
 
-            g.drawImage(image, 0, 0, getWidth(), getHeight(), null);
+            for (int y = 0; y < gridSize; y++) {
+                for (int x = 0; x < gridSize; x++) {
+                    double v = centroid[y * gridSize + x];
+                    v = Math.min(1.0, Math.max(0.0, v));
 
-            g.setColor(new Color(255, 0, 0, 180));
-            Graphics2D g2 = (Graphics2D) g;
-            g2.setStroke(new BasicStroke(2));
+                    // Invert: 0.0 -> white (255), 1.0 -> black/blue density (0)
+                    int gray = (int) (255 * (1.0 - v));
+                    g.setColor(new Color(gray, gray, (int) (gray * 0.9 + 25 * (1.0 - v))));
+                    g.fillRect((int) (x * cellW), (int) (y * cellH), (int) Math.ceil(cellW), (int) Math.ceil(cellH));
+                }
+            }
 
-            for (var m : matches) {
-                int rx = (int) (m.x() * sx);
-                int ry = (int) (m.y() * sy);
-                int rw = (int) (m.width() * sx);
-                int rh = (int) (m.height() * sy);
-                g.drawRect(rx, ry, rw, rh);
-                g.drawString(m.label() + " (" + String.format("%.2f", m.distance()) + ")", rx + 4, ry + 15);
+            // Grid lines
+            g.setColor(new Color(220, 220, 220, 100));
+            for (int i = 0; i <= gridSize; i++) {
+                g.drawLine((int) (i * cellW), 0, (int) (i * cellW), h);
+                g.drawLine(0, (int) (i * cellH), w, (int) (i * cellH));
+            }
+
+            // Overlay label
+            if (!currentLabel.isEmpty()) {
+                g.setColor(new Color(0, 100, 255, 180));
+                g.setFont(new Font("SansSerif", Font.BOLD, 22));
+                g.drawString("Zentroid: '" + currentLabel + "'", 12, 28);
             }
         }
     }

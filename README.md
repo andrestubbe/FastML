@@ -95,17 +95,16 @@ Modern AI runtimes frequently force heavy Python dependencies, multi-gigabyte mo
 ```text
                     FastAI (High-Level AI API)
                          │
-                   FastAIService
-                   /           \
-                  ▼             ▼
-            FastModel         FastML (This Library)
-             (LLMs)         (Classical ML & Patterns)
-                                │
-                  ┌─────────────┼─────────────┐
-                  ▼             ▼             ▼
-               Patterns      Algorithms     Vision
-              (Vectors,       (Centroid,    (Sliding
-               Rasters)       KNN, etc.)     Window)
+                   ┌─────┴─────────────┐
+                   ▼                   ▼
+             FastModel               FastML (This Library)
+          (LLMs & Embeddings)      (Classical ML & Patterns)
+                                       │
+                         ┌─────────────┼─────────────┐
+                         ▼             ▼             ▼
+                      Patterns      Algorithms     Vision
+                     (Vectors,       (Centroid,    (Sliding
+                      Rasters)       KNN, etc.)     Window)
 ```
 
 ---
